@@ -152,10 +152,29 @@ async function callClaude(messages, onChunk) {
         messages,
       }),
     });
-    const data = await resp.json();
-    const text = data.text || data.error || "No response received.";
-    onChunk(text);
-    return text;
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let full = "";
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6);
+        try {
+          const ev = JSON.parse(raw);
+          if (ev.type === "text") {
+            full += ev.text;
+            onChunk(full);
+          }
+        } catch {}
+      }
+    }
+    return full;
   } catch (err) {
     const msg = "Error connecting to the agent. The server may be waking up — wait 30 seconds and try again.";
     onChunk(msg);
