@@ -143,37 +143,24 @@ Provide your analysis in the required format.`;
 const BACKEND_URL = "https://helios-backend-hsr9.onrender.com";
 
 async function callClaude(messages, onChunk) {
-  const resp = await fetch(`${BACKEND_URL}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemPrompt: SYSTEM_PROMPT,
-      messages,
-    }),
-  });
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let full = "";
-  let buf = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      const raw = line.slice(6);
-      try {
-        const ev = JSON.parse(raw);
-        if (ev.type === "text") {
-          full += ev.text;
-          onChunk(full);
-        }
-      } catch {}
-    }
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemPrompt: SYSTEM_PROMPT,
+        messages,
+      }),
+    });
+    const data = await resp.json();
+    const text = data.text || data.error || "No response received.";
+    onChunk(text);
+    return text;
+  } catch (err) {
+    const msg = "Error connecting to the agent. The server may be waking up — wait 30 seconds and try again.";
+    onChunk(msg);
+    return msg;
   }
-  return full;
 }
 
 function formatMarkdown(text) {
